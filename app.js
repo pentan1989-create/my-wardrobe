@@ -1,3 +1,34 @@
+// ── パスワード認証 ────────────────────────────────────────────
+const PASSWORD = 'Puitan09'; // ← ここをあなたのパスワードに書き換えてください
+
+function checkAuth() {
+  if (sessionStorage.getItem('wardrobe_auth') === 'ok') {
+    unlock();
+    return;
+  }
+  document.getElementById('btn-unlock').addEventListener('click', tryUnlock);
+  document.getElementById('password-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') tryUnlock();
+  });
+}
+
+function tryUnlock() {
+  const input = document.getElementById('password-input').value;
+  if (input === PASSWORD) {
+    sessionStorage.setItem('wardrobe_auth', 'ok');
+    unlock();
+  } else {
+    document.getElementById('lock-error').classList.remove('hidden');
+    document.getElementById('password-input').value = '';
+    document.getElementById('password-input').focus();
+  }
+}
+
+function unlock() {
+  document.getElementById('lock-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+}
+
 // ── Data ─────────────────────────────────────────────────────
 const STORAGE_KEY = 'wardrobe_v1';
 
@@ -695,4 +726,5 @@ document.getElementById('btn-copy-review').addEventListener('click', () => {
 });
 
 // ── Init ──────────────────────────────────────────────────────
+checkAuth();
 renderCloset();
