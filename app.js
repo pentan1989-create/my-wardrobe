@@ -29,6 +29,112 @@ function unlock() {
   document.getElementById('app').classList.remove('hidden');
 }
 
+// ── Dropbox API ───────────────────────────────────────────────
+const DBX_APP_KEY     = '60saj2jkegwrdlm';
+const DBX_REDIRECT    = 'https://pentan1989-create.github.io/my-wardrobe/';
+const DBX_FILE        = '/wardrobe_data.json';
+
+function dbxConnected() { return !!localStorage.getItem('dbx_token'); }
+
+function b64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function dbxConnect() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  sessionStorage.setItem('dbx_verifier', verifier);
+  const p = new URLSearchParams({
+    client_id: DBX_APP_KEY, response_type: 'code',
+    code_challenge: challenge, code_challenge_method: 'S256',
+    redirect_uri: DBX_REDIRECT, token_access_type: 'offline',
+  });
+  location.href = `https://www.dropbox.com/oauth2/authorize?${p}`;
+}
+
+async function dbxExchangeCode(code) {
+  const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code, grant_type: 'authorization_code',
+      code_verifier: sessionStorage.getItem('dbx_verifier'),
+      redirect_uri: DBX_REDIRECT, client_id: DBX_APP_KEY,
+    }),
+  });
+  const d = await res.json();
+  if (d.access_token) {
+    localStorage.setItem('dbx_token', d.access_token);
+    if (d.refresh_token) localStorage.setItem('dbx_refresh', d.refresh_token);
+    sessionStorage.removeItem('dbx_verifier');
+    return true;
+  }
+  return false;
+}
+
+async function dbxRefresh() {
+  const rt = localStorage.getItem('dbx_refresh');
+  if (!rt) return false;
+  const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: rt, client_id: DBX_APP_KEY }),
+  });
+  const d = await res.json();
+  if (d.access_token) { localStorage.setItem('dbx_token', d.access_token); return true; }
+  return false;
+}
+
+async function dbxUpload(data) {
+  if (!dbxConnected()) return;
+  const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('dbx_token')}`,
+      'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE, mode: 'overwrite', mute: true }),
+      'Content-Type': 'application/octet-stream',
+    },
+    body: JSON.stringify(data),
+  });
+  if (res.status === 401) { if (await dbxRefresh()) dbxUpload(data); }
+}
+
+async function dbxDownload() {
+  if (!dbxConnected()) return null;
+  const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('dbx_token')}`,
+      'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }),
+    },
+  });
+  if (res.status === 401) { if (await dbxRefresh()) return dbxDownload(); return null; }
+  if (!res.ok) return null;
+  try { return await res.json(); } catch { return null; }
+}
+
+function dbxDisconnect() {
+  localStorage.removeItem('dbx_token');
+  localStorage.removeItem('dbx_refresh');
+  updateDropboxStatus();
+  toast('Dropbox連携を解除しました');
+}
+
+function updateDropboxStatus() {
+  const el = document.getElementById('dropbox-status');
+  if (!el) return;
+  if (dbxConnected()) {
+    el.innerHTML = `
+      <p style="font-size:13px;color:#2e7d32;margin-bottom:10px">✅ 連携中 — 変更が自動でDropboxに保存されます</p>
+      <button class="btn-secondary" onclick="dbxDisconnect()" style="width:100%">連携を解除する</button>`;
+  } else {
+    el.innerHTML = `
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:10px">MacとiPadで同じデータを自動同期します。</p>
+      <button class="btn-dropbox" onclick="dbxConnect()">Dropboxと連携する</button>`;
+  }
+}
+
 // ── Data ─────────────────────────────────────────────────────
 const STORAGE_KEY = 'wardrobe_v1';
 
@@ -40,6 +146,7 @@ function getData() {
 
 function saveData(d) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+  dbxUpload(d);
 }
 
 function uid() {
@@ -606,6 +713,7 @@ document.getElementById('declutter-days').addEventListener('change', renderDeclu
 // ── Export / Claude連携 ───────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click', () => {
   document.getElementById('export-text').value = buildMarkdown();
+  updateDropboxStatus();
   openModal('modal-export');
 });
 
@@ -726,5 +834,26 @@ document.getElementById('btn-copy-review').addEventListener('click', () => {
 });
 
 // ── Init ──────────────────────────────────────────────────────
-checkAuth();
-renderCloset();
+async function init() {
+  checkAuth();
+
+  // OAuthコールバック処理
+  const code = new URLSearchParams(location.search).get('code');
+  if (code) {
+    history.replaceState({}, '', location.pathname);
+    const ok = await dbxExchangeCode(code);
+    if (ok) {
+      const cloud = await dbxDownload();
+      if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); }
+      toast('Dropboxと連携しました！');
+    }
+  } else if (dbxConnected()) {
+    // 起動時にDropboxから最新データを取得
+    const cloud = await dbxDownload();
+    if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); }
+  }
+
+  renderCloset();
+}
+
+init();

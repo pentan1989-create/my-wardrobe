@@ -394,6 +394,14 @@ textarea { resize: none; height: 80px; }
 .skill-desc { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
 .skill-detail { font-size: 13px; color: var(--text); line-height: 1.6; margin-bottom: 14px; }
 .skill-form { margin-bottom: 12px; }
+.btn-dropbox {
+  width: 100%; padding: 12px;
+  background: #0061FF; color: #fff;
+  border: none; border-radius: 10px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.btn-dropbox:hover { background: #0052d9; }
+
 .btn-skill-copy {
   width: 100%; padding: 12px;
   background: var(--primary); color: #fff;
