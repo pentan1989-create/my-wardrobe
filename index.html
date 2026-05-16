@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Wardrobe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1>My Wardrobe</h1>
+    <button class="icon-btn" id="btn-export" title="Claude連携">🤖</button>
+  </header>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-view="closet">
+      <span class="nav-icon">👚</span>
+      <span class="nav-label">クローゼット</span>
+    </button>
+    <button class="nav-btn" data-view="outfits">
+      <span class="nav-icon">✨</span>
+      <span class="nav-label">コーデ</span>
+    </button>
+    <button class="nav-btn" data-view="today">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">今日</span>
+    </button>
+    <button class="nav-btn" data-view="declutter">
+      <span class="nav-icon">✂️</span>
+      <span class="nav-label">断捨離</span>
+    </button>
+    <button class="nav-btn" data-view="skills">
+      <span class="nav-icon">⚡</span>
+      <span class="nav-label">スキル</span>
+    </button>
+  </nav>
+
+  <main>
+
+    <!-- クローゼット -->
+    <div id="view-closet" class="view active">
+      <div class="view-header">
+        <div class="filter-tabs" id="filter-tabs">
+          <button class="filter-btn active" data-cat="all">すべて</button>
+          <button class="filter-btn" data-cat="tops">トップス</button>
+          <button class="filter-btn" data-cat="bottoms">ボトムス</button>
+          <button class="filter-btn" data-cat="outer">アウター</button>
+          <button class="filter-btn" data-cat="dress">ワンピース</button>
+          <button class="filter-btn" data-cat="shoes">靴</button>
+          <button class="filter-btn" data-cat="bag">バッグ</button>
+          <button class="filter-btn" data-cat="accessory">小物</button>
+        </div>
+      </div>
+      <div id="items-grid" class="items-grid"></div>
+      <button class="fab" id="btn-add-item">＋</button>
+    </div>
+
+    <!-- コーデ -->
+    <div id="view-outfits" class="view">
+      <div id="outfits-list" class="outfits-list"></div>
+      <button class="fab" id="btn-add-outfit">＋</button>
+    </div>
+
+    <!-- 今日 -->
+    <div id="view-today" class="view">
+      <div class="today-wrap">
+        <h2 id="today-date"></h2>
+        <p class="today-sub">今日何を着ましたか？</p>
+
+        <section class="today-section">
+          <h3>コーデから記録</h3>
+          <div id="today-outfit-list"></div>
+        </section>
+
+        <section class="today-section">
+          <h3>アイテムを選んで記録</h3>
+          <div id="today-chips" class="chip-grid"></div>
+          <button class="btn-primary" id="btn-log-items">記録する</button>
+        </section>
+
+        <section class="today-section">
+          <h3>今日の記録</h3>
+          <div id="today-log"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- 断捨離 -->
+    <div id="view-declutter" class="view">
+      <div class="declutter-wrap">
+        <div class="declutter-head">
+          <h2>断捨離チェック</h2>
+          <div class="declutter-filter">
+            <span>未着用</span>
+            <select id="declutter-days">
+              <option value="30">30日以上</option>
+              <option value="60">60日以上</option>
+              <option value="90" selected>90日以上</option>
+              <option value="180">180日以上</option>
+              <option value="365">1年以上</option>
+            </select>
+          </div>
+        </div>
+        <div id="declutter-grid" class="items-grid"></div>
+      </div>
+    </div>
+
+    <!-- スキル -->
+    <div id="view-skills" class="view">
+      <div class="skills-wrap">
+        <p class="skills-intro">コマンドと必要なデータをコピーして、Claude Codeに貼り付けて使います。</p>
+
+        <!-- コーデ提案 -->
+        <div class="skill-card">
+          <div class="skill-card-head">
+            <span class="skill-icon">🎨</span>
+            <div>
+              <div class="skill-name">/wardrobe-suggest</div>
+              <div class="skill-desc">コーデ提案</div>
+            </div>
+          </div>
+          <p class="skill-detail">天気・TPO・パーソナルカラー・骨格・顔タイプを総合的に考慮してコーデを2〜3案提案します。</p>
+          <div class="skill-form">
+            <input type="text" id="suggest-tpo" placeholder="今日の予定（例: 友達とランチ）">
+          </div>
+          <button class="btn-skill-copy" id="btn-copy-suggest">📋 コピーしてClaudeへ</button>
+          <div class="skill-hint">コピー後、Claude Codeに貼り付けて送信してください。</div>
+        </div>
+
+        <!-- コーデレビュー -->
+        <div class="skill-card">
+          <div class="skill-card-head">
+            <span class="skill-icon">📸</span>
+            <div>
+              <div class="skill-name">/wardrobe-review</div>
+              <div class="skill-desc">コーデレビュー</div>
+            </div>
+          </div>
+          <p class="skill-detail">着ている写真を見て、パーソナルスタイリング情報をもとに率直にフィードバックします。</p>
+          <div class="skill-form">
+            <input type="text" id="review-comment" placeholder="コメント（例: デートに着ていきたい）">
+          </div>
+          <button class="btn-skill-copy" id="btn-copy-review">📋 コピーしてClaudeへ</button>
+          <div class="skill-hint">コピー後、Claude Codeに貼り付けて写真も添付して送信してください。</div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- モーダル: アイテム追加/編集 -->
+<div id="modal-item" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="modal-item-title">アイテムを追加</h2>
+      <button class="modal-close-btn" data-modal="modal-item">×</button>
+    </div>
+    <form id="form-item">
+      <div class="photo-area" id="photo-area">
+        <img id="photo-preview" class="hidden">
+        <div id="photo-placeholder">
+          <span>📷</span>
+          <p>写真を追加</p>
+        </div>
+        <input type="file" id="photo-input" accept="image/*" class="hidden">
+      </div>
+      <div class="form-group">
+        <label>名前 *</label>
+        <input type="text" id="item-name" placeholder="例: 白Tシャツ" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>カテゴリ *</label>
+          <select id="item-category" required>
+            <option value="">選択</option>
+            <option value="tops">トップス</option>
+            <option value="bottoms">ボトムス</option>
+            <option value="outer">アウター</option>
+            <option value="dress">ワンピース</option>
+            <option value="shoes">靴</option>
+            <option value="bag">バッグ</option>
+            <option value="accessory">小物</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>色</label>
+          <select id="item-color">
+            <option value="">選択</option>
+            <option>白</option><option>黒</option><option>グレー</option>
+            <option>ネイビー</option><option>ブルー</option><option>グリーン</option>
+            <option>レッド</option><option>ピンク</option><option>ブラウン</option>
+            <option>ベージュ</option><option>カーキ</option><option>イエロー</option>
+            <option>マルチ</option><option>その他</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>ブランド</label>
+        <input type="text" id="item-brand" placeholder="例: UNIQLO">
+      </div>
+      <div class="form-group">
+        <label>メモ</label>
+        <textarea id="item-notes" placeholder="素材、サイズ感など"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary modal-close-btn" data-modal="modal-item">キャンセル</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- モーダル: アイテム詳細 -->
+<div id="modal-detail" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="detail-name"></h2>
+      <button class="modal-close-btn" data-modal="modal-detail">×</button>
+    </div>
+    <div id="detail-body"></div>
+    <div class="form-actions">
+      <button class="btn-danger" id="btn-detail-delete">削除</button>
+      <button class="btn-secondary" id="btn-detail-edit">編集</button>
+      <button class="btn-primary" id="btn-detail-wear">今日着た！</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: コーデ追加/編集 -->
+<div id="modal-outfit" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="modal-outfit-title">コーデを作る</h2>
+      <button class="modal-close-btn" data-modal="modal-outfit">×</button>
+    </div>
+    <form id="form-outfit">
+      <div class="form-group">
+        <label>コーデ名</label>
+        <input type="text" id="outfit-name" placeholder="例: カジュアルデイリー">
+      </div>
+      <div class="form-group">
+        <label>シーン</label>
+        <select id="outfit-occasion">
+          <option value="">選択</option>
+          <option>カジュアル</option><option>オフィス</option><option>デート</option>
+          <option>アウトドア</option><option>フォーマル</option><option>その他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>アイテムを選ぶ</label>
+        <div id="outfit-selector" class="outfit-selector"></div>
+      </div>
+      <div class="form-group">
+        <label>選択中</label>
+        <div id="outfit-selected" class="outfit-selected-row">
+          <span class="placeholder-text">アイテムを選んでください</span>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary modal-close-btn" data-modal="modal-outfit">キャンセル</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- モーダル: コーデ詳細 -->
+<div id="modal-outfit-detail" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="outfit-detail-name"></h2>
+      <button class="modal-close-btn" data-modal="modal-outfit-detail">×</button>
+    </div>
+    <div id="outfit-detail-body"></div>
+    <div class="form-actions">
+      <button class="btn-danger" id="btn-outfit-delete">削除</button>
+      <button class="btn-secondary" id="btn-outfit-edit">編集</button>
+      <button class="btn-primary" id="btn-outfit-wear">今日着た！</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: Claude連携 -->
+<div id="modal-export" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>データ管理</h2>
+      <button class="modal-close-btn" data-modal="modal-export">×</button>
+    </div>
+
+    <div class="data-section">
+      <h3>💾 バックアップ</h3>
+      <p>ワードローブデータをJSONファイルとしてDropboxに保存できます。</p>
+      <button class="btn-primary" id="btn-download-json">ダウンロード</button>
+    </div>
+
+    <div class="data-section">
+      <h3>📂 復元</h3>
+      <p>バックアップしたJSONファイルからデータを読み込みます。<br>現在のデータは上書きされます。</p>
+      <input type="file" id="import-input" accept=".json" class="hidden">
+      <button class="btn-secondary" id="btn-import-json">ファイルを選ぶ</button>
+    </div>
+
+    <div class="data-section">
+      <h3>🤖 Claude連携</h3>
+      <p>このテキストをコピーしてClaudeに貼り付けると、コーデ提案してもらえます。</p>
+      <textarea id="export-text" readonly></textarea>
+      <div class="form-actions" style="margin-top:10px">
+        <button class="btn-primary" id="btn-copy-export">📋 コピー</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
