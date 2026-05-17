@@ -174,27 +174,33 @@ function escapeHTML(v) {
 }
 function cleanText(v, max = 100) { return String(v ?? '').slice(0, max); }
 function cleanNumber(v, fb = 0) { const n = Number(v); return Number.isFinite(n) ? n : fb; }
-function cleanPhoto(v) { return typeof v === 'string' && v.startsWith('data:image/') ? v : null; }
+function cleanId(v) { return String(v ?? '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30); }
+function cleanPhoto(v) {
+  if (typeof v !== 'string') return null;
+  if (!/^data:image\/(jpeg|png|webp);base64,/i.test(v)) return null;
+  if (v.length > 2_000_000) return null;
+  return v;
+}
 function sanitizeImportedData(data) {
   return {
     items: Array.isArray(data.items) ? data.items.slice(0, 500).map(item => ({
-      id: cleanText(item.id, 20), name: cleanText(item.name, 100),
+      id: cleanId(item.id), name: cleanText(item.name, 100),
       category: cleanText(item.category, 20), color: cleanText(item.color, 20),
       brand: cleanText(item.brand, 50), notes: cleanText(item.notes, 500),
       photo: cleanPhoto(item.photo), wearCount: cleanNumber(item.wearCount),
       lastWorn: cleanText(item.lastWorn, 10), addedDate: cleanText(item.addedDate, 10),
     })) : [],
     outfits: Array.isArray(data.outfits) ? data.outfits.slice(0, 200).map(o => ({
-      id: cleanText(o.id, 20), name: cleanText(o.name, 100),
+      id: cleanId(o.id), name: cleanText(o.name, 100),
       occasion: cleanText(o.occasion, 30),
-      items: Array.isArray(o.items) ? o.items.slice(0, 20).map(id => cleanText(id, 20)) : [],
+      items: Array.isArray(o.items) ? o.items.slice(0, 20).map(id => cleanId(id)) : [],
       wearCount: cleanNumber(o.wearCount), lastWorn: cleanText(o.lastWorn, 10),
       addedDate: cleanText(o.addedDate, 10),
     })) : [],
     wearLogs: Array.isArray(data.wearLogs) ? data.wearLogs.slice(0, 1000).map(log => ({
       date: cleanText(log.date, 10),
-      itemIds: Array.isArray(log.itemIds) ? log.itemIds.slice(0, 20).map(id => cleanText(id, 20)) : [],
-      outfitId: log.outfitId ? cleanText(log.outfitId, 20) : null,
+      itemIds: Array.isArray(log.itemIds) ? log.itemIds.slice(0, 20).map(id => cleanId(id)) : [],
+      outfitId: log.outfitId ? cleanId(log.outfitId) : null,
     })) : [],
   };
 }
@@ -778,6 +784,10 @@ document.getElementById('import-input').addEventListener('change', e => {
   e.target.value = '';
 });
 
+document.getElementById('export-include-notes').addEventListener('change', () => {
+  document.getElementById('export-text').value = buildMarkdown();
+});
+
 document.getElementById('btn-copy-export').addEventListener('click', () => {
   navigator.clipboard.writeText(document.getElementById('export-text').value)
     .then(() => { toast('コピーしました！Claudeに貼り付けてください'); closeAllModals(); })
@@ -786,6 +796,7 @@ document.getElementById('btn-copy-export').addEventListener('click', () => {
 
 function buildMarkdown() {
   const { items, outfits } = getData();
+  const includeNotes = document.getElementById('export-include-notes')?.checked ?? false;
   const d = today();
   let md = `# ワードローブデータ\n更新: ${d}\n\n`;
   md += `## アイテム一覧（${items.length}点）\n\n`;
@@ -803,7 +814,7 @@ function buildMarkdown() {
       if (item.brand)    md += ` / ${item.brand}`;
       md += ` / 着用${item.wearCount || 0}回`;
       if (item.lastWorn) md += ` / 最終着用: ${item.lastWorn}`;
-      if (item.notes)    md += ` / ${item.notes}`;
+      if (includeNotes && item.notes) md += ` / ${item.notes}`;
       md += '\n';
     });
     md += '\n';
@@ -873,13 +884,13 @@ async function init() {
       const ok = await dbxExchangeCode(code);
       if (ok) {
         const cloud = await dbxDownload();
-        if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); }
+        if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizeImportedData(cloud))); }
         toast('Dropboxと連携しました！');
       }
     }
   } else if (dbxConnected()) {
     const cloud = await dbxDownload();
-    if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); }
+    if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizeImportedData(cloud))); }
   }
 
   renderCloset();

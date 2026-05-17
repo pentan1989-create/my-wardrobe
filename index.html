@@ -326,6 +326,10 @@
     <div class="data-section">
       <h3>🤖 Claude連携</h3>
       <p>このテキストをコピーしてClaudeに貼り付けると、コーデ提案してもらえます。</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" id="export-include-notes">
+        メモ欄を含める（住所・体型など個人情報に注意）
+      </label>
       <textarea id="export-text" readonly></textarea>
       <div class="form-actions" style="margin-top:10px">
         <button class="btn-primary" id="btn-copy-export">📋 コピー</button>
