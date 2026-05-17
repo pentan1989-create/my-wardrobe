@@ -43,12 +43,15 @@ function b64url(buf) {
 
 async function dbxConnect() {
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const state   = b64url(crypto.getRandomValues(new Uint8Array(16)));
   const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
   sessionStorage.setItem('dbx_verifier', verifier);
+  sessionStorage.setItem('dbx_state', state);
   const p = new URLSearchParams({
     client_id: DBX_APP_KEY, response_type: 'code',
     code_challenge: challenge, code_challenge_method: 'S256',
-    redirect_uri: DBX_REDIRECT, token_access_type: 'offline',
+    redirect_uri: DBX_REDIRECT, token_access_type: 'online',
+    state,
   });
   location.href = `https://www.dropbox.com/oauth2/authorize?${p}`;
 }
@@ -66,25 +69,13 @@ async function dbxExchangeCode(code) {
   const d = await res.json();
   if (d.access_token) {
     localStorage.setItem('dbx_token', d.access_token);
-    if (d.refresh_token) localStorage.setItem('dbx_refresh', d.refresh_token);
     sessionStorage.removeItem('dbx_verifier');
+    sessionStorage.removeItem('dbx_state');
     return true;
   }
   return false;
 }
 
-async function dbxRefresh() {
-  const rt = localStorage.getItem('dbx_refresh');
-  if (!rt) return false;
-  const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: rt, client_id: DBX_APP_KEY }),
-  });
-  const d = await res.json();
-  if (d.access_token) { localStorage.setItem('dbx_token', d.access_token); return true; }
-  return false;
-}
 
 async function dbxUpload(data) {
   if (!dbxConnected()) return;
@@ -97,7 +88,7 @@ async function dbxUpload(data) {
     },
     body: JSON.stringify(data),
   });
-  if (res.status === 401) { if (await dbxRefresh()) dbxUpload(data); }
+  if (res.status === 401) { dbxDisconnect(); toast('Dropboxの接続が切れました。再接続してください'); }
 }
 
 async function dbxDownload() {
@@ -109,14 +100,13 @@ async function dbxDownload() {
       'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }),
     },
   });
-  if (res.status === 401) { if (await dbxRefresh()) return dbxDownload(); return null; }
+  if (res.status === 401) { dbxDisconnect(); return null; }
   if (!res.ok) return null;
   try { return await res.json(); } catch { return null; }
 }
 
 function dbxDisconnect() {
   localStorage.removeItem('dbx_token');
-  localStorage.removeItem('dbx_refresh');
   updateDropboxStatus();
   toast('Dropbox連携を解除しました');
 }
@@ -174,6 +164,40 @@ const CAT_ICON = {
 };
 const icon = c => CAT_ICON[c] || '📦';
 const label = c => CAT_LABEL[c] || c;
+
+// ── Security helpers ──────────────────────────────────────────
+function escapeHTML(v) {
+  return String(v ?? '')
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+function cleanText(v, max = 100) { return String(v ?? '').slice(0, max); }
+function cleanNumber(v, fb = 0) { const n = Number(v); return Number.isFinite(n) ? n : fb; }
+function cleanPhoto(v) { return typeof v === 'string' && v.startsWith('data:image/') ? v : null; }
+function sanitizeImportedData(data) {
+  return {
+    items: Array.isArray(data.items) ? data.items.slice(0, 500).map(item => ({
+      id: cleanText(item.id, 20), name: cleanText(item.name, 100),
+      category: cleanText(item.category, 20), color: cleanText(item.color, 20),
+      brand: cleanText(item.brand, 50), notes: cleanText(item.notes, 500),
+      photo: cleanPhoto(item.photo), wearCount: cleanNumber(item.wearCount),
+      lastWorn: cleanText(item.lastWorn, 10), addedDate: cleanText(item.addedDate, 10),
+    })) : [],
+    outfits: Array.isArray(data.outfits) ? data.outfits.slice(0, 200).map(o => ({
+      id: cleanText(o.id, 20), name: cleanText(o.name, 100),
+      occasion: cleanText(o.occasion, 30),
+      items: Array.isArray(o.items) ? o.items.slice(0, 20).map(id => cleanText(id, 20)) : [],
+      wearCount: cleanNumber(o.wearCount), lastWorn: cleanText(o.lastWorn, 10),
+      addedDate: cleanText(o.addedDate, 10),
+    })) : [],
+    wearLogs: Array.isArray(data.wearLogs) ? data.wearLogs.slice(0, 1000).map(log => ({
+      date: cleanText(log.date, 10),
+      itemIds: Array.isArray(log.itemIds) ? log.itemIds.slice(0, 20).map(id => cleanText(id, 20)) : [],
+      outfitId: log.outfitId ? cleanText(log.outfitId, 20) : null,
+    })) : [],
+  };
+}
 
 // ── Navigation ────────────────────────────────────────────────
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -258,9 +282,9 @@ function renderCloset() {
         ${item.photo ? `<img src="${item.photo}" alt="">` : icon(item.category)}
       </div>
       <div class="item-info">
-        <div class="item-name">${item.name}</div>
+        <div class="item-name">${escapeHTML(item.name)}</div>
         <div class="item-meta">
-          <span>${item.color || ''}</span>
+          <span>${escapeHTML(item.color || '')}</span>
           <span>× ${item.wearCount || 0}</span>
         </div>
       </div>
@@ -371,10 +395,10 @@ function openItemDetail(itemId) {
     </div>
     <div class="detail-tags">
       ${item.category ? `<span class="detail-tag">${label(item.category)}</span>` : ''}
-      ${item.color    ? `<span class="detail-tag">${item.color}</span>` : ''}
-      ${item.brand    ? `<span class="detail-tag">${item.brand}</span>` : ''}
+      ${item.color    ? `<span class="detail-tag">${escapeHTML(item.color)}</span>` : ''}
+      ${item.brand    ? `<span class="detail-tag">${escapeHTML(item.brand)}</span>` : ''}
     </div>
-    ${item.notes ? `<p style="font-size:14px;color:var(--text-sub)">${item.notes}</p>` : ''}
+    ${item.notes ? `<p style="font-size:14px;color:var(--text-sub)">${escapeHTML(item.notes)}</p>` : ''}
   `;
   openModal('modal-detail');
 }
@@ -415,8 +439,8 @@ function renderOutfits() {
     return `
       <div class="outfit-card" onclick="openOutfitDetail('${o.id}')">
         <div class="outfit-card-head">
-          <span class="outfit-card-name">${o.name}</span>
-          ${o.occasion ? `<span class="occasion-badge">${o.occasion}</span>` : ''}
+          <span class="outfit-card-name">${escapeHTML(o.name)}</span>
+          ${o.occasion ? `<span class="occasion-badge">${escapeHTML(o.occasion)}</span>` : ''}
         </div>
         <div class="outfit-thumbs">
           ${oItems.map(item => `
@@ -469,7 +493,7 @@ function renderOutfitSelector() {
         ${item.photo ? `<img src="${item.photo}" alt="">` : icon(item.category)}
       </div>
       <div>
-        <div class="outfit-sel-name">${item.name}</div>
+        <div class="outfit-sel-name">${escapeHTML(item.name)}</div>
         <div class="outfit-sel-cat">${label(item.category)}</div>
       </div>
     </div>
@@ -489,7 +513,7 @@ function refreshSelectedDisplay() {
   const el = document.getElementById('outfit-selected');
   const selected = [...selectedItems].map(id => items.find(i => i.id === id)).filter(Boolean);
   el.innerHTML = selected.length
-    ? selected.map(item => `<span class="sel-chip">${icon(item.category)} ${item.name}</span>`).join('')
+    ? selected.map(item => `<span class="sel-chip">${icon(item.category)} ${escapeHTML(item.name)}</span>`).join('')
     : `<span class="placeholder-text">アイテムを選んでください</span>`;
 }
 
@@ -544,8 +568,8 @@ function openOutfitDetail(outfitId) {
       </div>
     </div>
     <div class="detail-tags">
-      ${o.occasion ? `<span class="detail-tag">${o.occasion}</span>` : ''}
-      ${oItems.map(i => `<span class="detail-tag">${i.name}</span>`).join('')}
+      ${o.occasion ? `<span class="detail-tag">${escapeHTML(o.occasion)}</span>` : ''}
+      ${oItems.map(i => `<span class="detail-tag">${escapeHTML(i.name)}</span>`).join('')}
     </div>
   `;
   openModal('modal-outfit-detail');
@@ -616,7 +640,7 @@ function renderToday() {
   outfitEl.innerHTML = outfits.length
     ? outfits.map(o => `
         <button class="today-outfit-btn" onclick="logOutfit('${o.id}')">
-          ${o.name}${o.occasion ? ` · ${o.occasion}` : ''}
+          ${escapeHTML(o.name)}${o.occasion ? ` · ${escapeHTML(o.occasion)}` : ''}
         </button>
       `).join('')
     : '<p style="font-size:13px;color:var(--text-sub)">コーデが登録されていません</p>';
@@ -625,7 +649,7 @@ function renderToday() {
   todaySelected = new Set();
   document.getElementById('today-chips').innerHTML = items.map(item => `
     <button class="chip" data-id="${item.id}" onclick="toggleTodayItem('${item.id}')">
-      ${icon(item.category)} ${item.name}
+      ${icon(item.category)} ${escapeHTML(item.name)}
     </button>
   `).join('');
 
@@ -673,8 +697,8 @@ function renderTodayLog() {
   const outfit = log.outfitId ? outfits.find(o => o.id === log.outfitId) : null;
   el.innerHTML = `
     <div class="log-entry">
-      ${outfit ? `<div style="font-weight:600;margin-bottom:4px">${outfit.name}</div>` : ''}
-      <div class="log-sub">${names.join(' · ')}</div>
+      ${outfit ? `<div style="font-weight:600;margin-bottom:4px">${escapeHTML(outfit.name)}</div>` : ''}
+      <div class="log-sub">${names.map(n => escapeHTML(n)).join(' · ')}</div>
     </div>
   `;
 }
@@ -698,9 +722,9 @@ function renderDeclutter() {
         ${item.photo ? `<img src="${item.photo}" alt="">` : icon(item.category)}
       </div>
       <div class="item-info">
-        <div class="item-name">${item.name}</div>
+        <div class="item-name">${escapeHTML(item.name)}</div>
         <div class="item-meta">
-          <span>${item.color || ''}</span>
+          <span>${escapeHTML(item.color || '')}</span>
           <span>${daysSince(item.lastWorn || item.addedDate)}日前</span>
         </div>
       </div>
@@ -739,10 +763,10 @@ document.getElementById('import-input').addEventListener('change', e => {
   const reader = new FileReader();
   reader.onload = ev => {
     try {
-      const data = JSON.parse(ev.target.result);
-      if (!data.items || !data.outfits) throw new Error();
+      const raw = JSON.parse(ev.target.result);
+      if (!raw.items || !raw.outfits) throw new Error();
       if (!confirm(`データを復元します。\n現在のデータはすべて上書きされます。\nよろしいですか？`)) return;
-      saveData(data);
+      saveData(sanitizeImportedData(raw));
       closeAllModals();
       toast('復元しました！');
       renderCloset();
@@ -837,18 +861,23 @@ document.getElementById('btn-copy-review').addEventListener('click', () => {
 async function init() {
   checkAuth();
 
-  // OAuthコールバック処理
-  const code = new URLSearchParams(location.search).get('code');
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  const returnedState = params.get('state');
   if (code) {
     history.replaceState({}, '', location.pathname);
-    const ok = await dbxExchangeCode(code);
-    if (ok) {
-      const cloud = await dbxDownload();
-      if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); }
-      toast('Dropboxと連携しました！');
+    const savedState = sessionStorage.getItem('dbx_state');
+    if (!savedState || savedState !== returnedState) {
+      toast('認証エラー: 不正なリクエストです');
+    } else {
+      const ok = await dbxExchangeCode(code);
+      if (ok) {
+        const cloud = await dbxDownload();
+        if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); }
+        toast('Dropboxと連携しました！');
+      }
     }
   } else if (dbxConnected()) {
-    // 起動時にDropboxから最新データを取得
     const cloud = await dbxDownload();
     if (cloud?.items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); }
   }
