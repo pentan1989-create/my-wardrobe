@@ -1,34 +1,3 @@
-// ── パスワード認証 ────────────────────────────────────────────
-const PASSWORD = 'Puitan09'; // ← ここをあなたのパスワードに書き換えてください
-
-function checkAuth() {
-  if (sessionStorage.getItem('wardrobe_auth') === 'ok') {
-    unlock();
-    return;
-  }
-  document.getElementById('btn-unlock').addEventListener('click', tryUnlock);
-  document.getElementById('password-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') tryUnlock();
-  });
-}
-
-function tryUnlock() {
-  const input = document.getElementById('password-input').value;
-  if (input === PASSWORD) {
-    sessionStorage.setItem('wardrobe_auth', 'ok');
-    unlock();
-  } else {
-    document.getElementById('lock-error').classList.remove('hidden');
-    document.getElementById('password-input').value = '';
-    document.getElementById('password-input').focus();
-  }
-}
-
-function unlock() {
-  document.getElementById('lock-screen').classList.add('hidden');
-  document.getElementById('app').classList.remove('hidden');
-}
-
 // ── Dropbox API ───────────────────────────────────────────────
 const DBX_APP_KEY     = '60saj2jkegwrdlm';
 const DBX_REDIRECT    = 'https://pentan1989-create.github.io/my-wardrobe/';
@@ -870,8 +839,6 @@ document.getElementById('btn-copy-review').addEventListener('click', () => {
 
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
-  checkAuth();
-
   const params = new URLSearchParams(location.search);
   const code = params.get('code');
   const returnedState = params.get('state');
